@@ -15,7 +15,7 @@ agent = Agent(
 
 async def main():
     result = await Runner.run(starting_agent=agent, input="Do you know of any fun fact? Use any tool at disposal if one is available.")
-    print(result.final_output)
+    print(result.new)
 
 if __name__ == "__main__":
     asyncio.run(main())
