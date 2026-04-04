@@ -10,3 +10,5 @@ wheels/
 .venv
 
 .env
+.zed
+.DS_Store
