@@ -1,7 +1,7 @@
 from agents import Agent
 from dotenv import load_dotenv
 
-from app_agents.statement_extraction_agent import statement_extraction_agent
+from app_agents.finance_agent import finance_agent
 
 load_dotenv()
 
@@ -75,7 +75,7 @@ orchestrator_agent = Agent(
     Your goal is to act as a reliable controller: route correctly, use the right capability, and return useful answers without hallucinating.
     """,
     tools=[
-        statement_extraction_agent.as_tool(
+        finance_agent.as_tool(
             tool_name="statement_extraction_agent",
             tool_description="""
                           The agent responsible for taking an input file, extracting statements from the file, and loading it to a database.

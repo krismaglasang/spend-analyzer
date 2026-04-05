@@ -12,3 +12,4 @@ wheels/
 .env
 .zed
 .DS_Store
+/init/00-read-only-user.sh

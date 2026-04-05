@@ -1,15 +1,15 @@
 from datetime import date
 from decimal import Decimal
-from typing import Literal
+from typing import Any, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class Transaction(BaseModel):
     transaction_date: date
     amount: Decimal
-    other_party: str
-    other_party_account: str
+    other_party: str | None = None
+    other_party_account: str | None = None
 
 
 class Account(BaseModel):
@@ -23,6 +23,16 @@ class Statement(BaseModel):
 
 
 class PersistResult(BaseModel):
-    inserted_count: int
-    skipped_count: int
-    status: Literal["success", "partial", "failed"]
+    accounts_processed: int
+    transactions_inserted: int
+    transactions_skipped: int
+    status: Literal["success", "partial", "no_new_data"]
+
+
+class QueryTransactionsResult(BaseModel):
+    row_count: int
+    truncated: bool
+    executed_sql: str
+    columns: list[str]
+    rows: list[dict[str, Any]] = Field(default_factory=list)
+    successful_query: str
