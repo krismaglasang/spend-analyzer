@@ -153,17 +153,131 @@ def query_transactions(sql: str) -> QueryTransactionsResult:
     - "Who were my top merchants this year?"
     - "Show my spending by month."
 
+    The query must be valid PostgreSQL SQL.
+
+    Approved tables and schema:
+
+    Table: accounts
+    - Purpose: one row per account
+    - Columns:
+      - id INTEGER PRIMARY KEY
+      - account_name TEXT NOT NULL
+      - account_number TEXT NOT NULL UNIQUE
+      - created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+
+    Table: transactions
+    - Purpose: one row per transaction
+    - Columns:
+      - id INTEGER PRIMARY KEY
+      - account_id INTEGER NOT NULL
+      - transaction_date DATE NOT NULL
+      - amount NUMERIC(12,2) NOT NULL
+      - other_party TEXT
+      - other_party_account TEXT
+      - created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+
+    Join rules:
+    - transactions.account_id references accounts.id
+    - When joining transactions to accounts, use:
+      transactions.account_id = accounts.id
+
+    Business meaning:
+    - Use transactions.transaction_date for date filtering and time grouping.
+    - Use transactions.amount for totals, averages, and counts involving money.
+    - Use transactions.other_party when the user asks about merchants, payees, counterparties, or who money went to / came from.
+    - Use transactions.other_party_account when the user asks about the counterparty account number.
+    - Use accounts.account_name or accounts.account_number when the user asks about a specific owned account.
+    - Do not invent columns such as merchant_name, category, balance, transaction_type, debit_credit_flag, or account_name inside the transactions table.
+    - account_name is in the accounts table, not the transactions table.
+    - account_number is in the accounts table, not the transactions table.
+    - account_id is in the transactions table and must be joined to accounts.id.
+
+    SQL dialect requirements:
+    - Generate PostgreSQL syntax only.
+    - Prefer PostgreSQL conventions where appropriate, such as:
+      - ILIKE for case-insensitive text matching
+      - DATE_TRUNC(...) for time grouping
+      - CURRENT_DATE or NOW() for current date/time logic
+      - INTERVAL syntax such as INTERVAL '1 month'
+      - CAST(... AS ...) or ::type for casting
+      - LIMIT for row limiting
+    - Do not use non-PostgreSQL syntax such as:
+      - MySQL: DATE_SUB(), STR_TO_DATE(), IFNULL()
+      - SQL Server: TOP, GETDATE(), ISNULL()
+      - backticks for identifiers
+      - SQLite-specific date syntax unless it is also valid PostgreSQL
+    - Do not terminate your PostgreSQL queries with ';'
+
     Rules:
-    - Only generate SELECT queries.
-    - Only query approved analytics tables, not raw tables.
+    - Only generate a single SELECT query.
+    - Only query the approved tables listed above.
     - Prefer aggregations for "how much", "total", "average", and "count" questions.
     - Add date filters when the user asks about a period.
     - Select only the columns needed to answer the question.
-    - Do not attempt INSERT, UPDATE, DELETE, DDL, schema inspection, or admin SQL.
+    - Do not attempt INSERT, UPDATE, DELETE, MERGE, UPSERT, DDL, schema inspection, or admin SQL.
+    - Do not query information_schema, pg_catalog, or other system tables.
+    - Do not modify the database in any way.
+    - Do not reference any table or column not explicitly listed in this description.
 
-    Approved tables:
-    - accounts
-    - transactions
+    Query-writing guidance:
+    - If the user asks about spending from one of the user's accounts, usually join transactions to accounts and filter on accounts.account_name or accounts.account_number.
+    - If the user asks about merchants or counterparties, usually group or filter by transactions.other_party.
+    - If the user asks for trends over time, usually group by DATE_TRUNC(...) on transactions.transaction_date.
+    - If the user asks for outgoing spend, use the sign convention stored in the data. In this app, spending/outgoing transactions are typically filtered with amount < 0, and incoming money with amount > 0.
+
+    Examples:
+
+    Question: "How much did I spend last month?"
+    SQL:
+    SELECT COALESCE(SUM(tr.amount), 0) AS total_spent
+    FROM transactions AS tr
+    WHERE tr.amount < 0
+      AND tr.transaction_date >= DATE_TRUNC('month', CURRENT_DATE - INTERVAL '1 month')
+      AND tr.transaction_date < DATE_TRUNC('month', CURRENT_DATE)
+
+    Question: "Show my spending by month."
+    SQL:
+    SELECT DATE_TRUNC('month', tr.transaction_date) AS month,
+           SUM(tr.amount) AS total_spent
+    FROM transactions AS tr
+    WHERE tr.amount < 0
+    GROUP BY 1
+    ORDER BY 1
+
+    Question: "Who were my top merchants this year?"
+    SQL:
+    SELECT tr.other_party,
+           SUM(ABS(tr.amount)) AS total_spent
+    FROM transactions AS tr
+    WHERE tr.amount < 0
+      AND tr.transaction_date >= DATE_TRUNC('year', CURRENT_DATE)
+    GROUP BY tr.other_party
+    ORDER BY total_spent DESC
+    LIMIT 10
+
+    Question: "How much went from my Everyday account to AMEX?"
+    SQL:
+    SELECT COALESCE(SUM(tr.amount), 0) AS total_amount
+    FROM transactions AS tr
+    INNER JOIN accounts AS ac
+      ON tr.account_id = ac.id
+    WHERE ac.account_name = 'Everyday'
+      AND tr.other_party = 'AMEX'
+      AND tr.amount < 0
+
+    Question: "Show transactions for account number 02-1234-1234567-000 in March 2026."
+    SQL:
+    SELECT tr.transaction_date,
+           tr.amount,
+           tr.other_party,
+           tr.other_party_account
+    FROM transactions AS tr
+    INNER JOIN accounts AS ac
+      ON tr.account_id = ac.id
+    WHERE ac.account_number = '02-1234-1234567-000'
+      AND tr.transaction_date >= DATE '2026-03-01'
+      AND tr.transaction_date < DATE '2026-04-01'
+    ORDER BY tr.transaction_date ASC, tr.id ASC
     """
     dsn = _get_db("DATABASE_URL_READ_ONLY")
     safe_sql = _validate_and_prepare_sql(sql)
